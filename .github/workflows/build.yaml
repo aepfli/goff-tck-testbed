@@ -24,6 +24,15 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      # Building is not evidence that the testbed works; smoke.sh drives every control-API
+      # operation against the built image and checks the canonical set as served. Its key list is
+      # derived from flags/canonical-flags.json, never hardcoded. It runs BEFORE the push, so a
+      # broken image never reaches ghcr.io under a tag an adoption pins.
+      - name: Smoke test the image
+        run: |
+          docker build -t testbed:smoke .
+          ./smoke.sh testbed:smoke
+
       # Pull requests build but do not push: a fork PR has no write token, and a testbed image
       # tagged from an unreviewed branch is exactly the sort of thing an adoption would then pull
       # in CI without noticing.
@@ -35,6 +44,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # The image version comes from version.txt, so main publishes :<version> and adoptions can
+      # pin it without waiting for a git tag. A v* tag additionally produces the semver tags.
+      - name: Read version
+        id: version
+        run: echo "version=$(sed 's/^v//' version.txt | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+
       - name: Derive tags
         id: meta
         uses: docker/metadata-action@v5
@@ -42,6 +57,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.version.outputs.version }},enable={{is_default_branch}}
             type=sha,format=long
             type=ref,event=pr
             type=semver,pattern={{version}}
@@ -56,11 +72,3 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      # Building is not evidence that the testbed works; smoke.sh drives every control-API
-      # operation against the built image and checks the canonical set as served. Its key list is
-      # derived from flags/canonical-flags.json, never hardcoded.
-      - name: Smoke test the image
-        run: |
-          docker build -t testbed:smoke .
-          ./smoke.sh testbed:smoke

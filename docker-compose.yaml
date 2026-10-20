@@ -1,0 +1,17 @@
+services:
+  backend:
+    image: ${IMAGE:-goff-testbed}:${VERSION:-dev}
+    build:
+      context: .
+    # Dynamically mapped, never pinned: the TCK reads the mapped port from the container. Pinning
+    # would make parallel runs collide, and POST /stop deliberately never restarts the container
+    # precisely so these mappings survive an outage.
+    ports:
+      - 1031
+      - 8080
+    healthcheck:
+      test: ["CMD", "/launchpad", "-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
